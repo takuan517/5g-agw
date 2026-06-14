@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  cgw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: 5g-agw-cgw
+    restart: unless-stopped
+    # 将来の拡張のため、コンテナに固定IPを振れる独自のネットワークを定義しておきます
+    networks:
+      sbi_network:
+        ipv4_address: 10.100.200.10
+
+  packetrusher:
+      build:
+        context: .
+        dockerfile: Dockerfile.pr  # ← ここを先ほど作ったファイルに変更！
+      container_name: 5g-agw-packetrusher
+      depends_on:
+        - cgw
+      volumes:
+        - ./config/packetrusher.yaml:/app/config/config.yml # マウント先を /app/config に変更
+      networks:
+        sbi_network:
+          ipv4_address: 10.100.200.20
+
+networks:
+  sbi_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.100.200.0/24

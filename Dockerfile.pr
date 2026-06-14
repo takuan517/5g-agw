@@ -1,0 +1,14 @@
+# Goの環境を用意
+FROM golang:1.23
+
+# 必要なSCTPライブラリをインストール
+RUN apt-get update && apt-get install -y libsctp-dev git && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 公式リポジトリからソースコードを取得してビルド
+RUN git clone https://github.com/HewlettPackard/PacketRusher.git .
+RUN go build -o packetrusher cmd/packetrusher.go
+
+# 起動コマンド（設定ファイルは外部からマウントします）
+CMD ["./packetrusher", "gnb"]
