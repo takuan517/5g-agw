@@ -2,18 +2,21 @@
 # to the 5G-AGW development network.
 #
 # Usage from the free5GC Docker Compose directory:
-#   docker compose -f docker-compose.yml -f /path/to/5g-agw/examples/free5gc-sbi-network.override.yml up -d
+#   docker compose -f docker-compose.yaml -f /path/to/5g-agw/examples/free5gc-sbi-network.override.yml up -d
 #
-# Adjust the service name "amf" below if your free5GC Compose file uses a
-# different AMF service name.
+# free5gc-compose already defines a 10.100.200.0/24 network named "privnet".
+# This override maps that logical network onto the external Docker network
+# created by 5G-AGW: "sbi_network".
 
 services:
-  amf:
+  free5gc-amf:
     networks:
-      sbi_network:
+      privnet:
         ipv4_address: 10.100.200.30
+        aliases:
+          - amf.free5gc.org
 
 networks:
-  sbi_network:
+  privnet:
     external: true
     name: sbi_network

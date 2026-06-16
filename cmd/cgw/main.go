@@ -116,8 +116,7 @@ func handleGnbConnection(gnbConn net.Conn, cfg config) {
 				}
 
 				// gNBへ送信
-				_, err = gnbConn.Write(responseBytes)
-				if err != nil {
+				if err := writeFull(gnbConn, responseBytes); err != nil {
 					log.Printf("[CGW] NG Setup Response の送信に失敗: %v", err)
 					return
 				}
@@ -172,8 +171,31 @@ func proxyNGAP(direction string, dst net.Conn, src net.Conn, errCh chan<- error)
 }
 
 func writeFull(conn net.Conn, payload []byte) error {
+	if sctpConn, ok := conn.(*sctp.SCTPConn); ok {
+		return writeFullSCTP(sctpConn, payload)
+	}
+
 	for len(payload) > 0 {
 		n, err := conn.Write(payload)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return io.ErrShortWrite
+		}
+		payload = payload[n:]
+	}
+	return nil
+}
+
+func writeFullSCTP(conn *sctp.SCTPConn, payload []byte) error {
+	info := &sctp.SndRcvInfo{
+		Stream: 0,
+		PPID:   ngap.PPID,
+	}
+
+	for len(payload) > 0 {
+		n, err := conn.SCTPWrite(payload, info)
 		if err != nil {
 			return err
 		}

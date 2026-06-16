@@ -51,12 +51,12 @@ From your free5GC Docker Compose directory, run something like:
 
 ```bash
 docker compose \
-  -f docker-compose.yml \
+  -f docker-compose.yaml \
   -f /absolute/path/to/5g-agw/examples/free5gc-sbi-network.override.yml \
   up -d
 ```
 
-If your free5GC Compose service is not named `amf`, edit the override file and replace `amf` with the actual AMF service name.
+The current override targets the official `free5gc-compose` service name `free5gc-amf` and maps its logical `privnet` network onto the external Docker network named `sbi_network`.
 
 ## 3. Configure the AMF N2 Address
 
@@ -66,7 +66,13 @@ The AMF container must listen for NGAP/SCTP on the address assigned on `sbi_netw
 10.100.200.30:38412
 ```
 
-In free5GC, this usually means updating the AMF configuration so its NGAP/N2 bind address includes `10.100.200.30`. The exact file path depends on the free5GC Docker setup, but it is commonly an AMF config file mounted into the AMF container.
+In the current `free5gc-compose` layout, the AMF config is:
+
+```text
+config/amfcfg.yaml
+```
+
+The default config uses `amf.free5gc.org` in `ngapIpList`, and the override keeps that alias on `10.100.200.30`. If you replace aliases with literal IP addresses, set `ngapIpList` to `10.100.200.30`.
 
 Also make sure the AMF supports the same test values used by PacketRusher:
 
@@ -78,7 +84,7 @@ Also make sure the AMF supports the same test values used by PacketRusher:
 | SST | `01` |
 | SD | `000001` |
 
-If these values do not match, the first visible failure will often be `NGSetupFailure` or a later UE registration rejection.
+If these values do not match, the first visible failure will often be `NGSetupFailure` or a later UE registration rejection. For the first transparent NGSetup test, matching `config/amfcfg.yaml` is the critical piece.
 
 ## 4. Run CGW in Transparent Proxy Mode
 
