@@ -1,7 +1,7 @@
-# 安定版のGo 1.22 (Debianベース) を使用
+# 安定版のGo 1.26 を使用
 FROM golang:1.26.2
 
-# SCTP通信に必要なOSパッケージ（libsctp-dev）を一応入れておきます
+# SCTP通信に必要なOSパッケージ
 RUN apt-get update && apt-get install -y libsctp-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

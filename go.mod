@@ -3,12 +3,12 @@ module 5g-agw
 go 1.26.2
 
 require (
+	github.com/free5gc/aper v1.1.1
 	github.com/free5gc/ngap v1.1.3
-	github.com/free5gc/sctp v1.1.2
+	github.com/free5gc/sctp v1.0.1
 )
 
 require (
-	github.com/free5gc/aper v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/tim-ywliu/nested-logrus-formatter v1.3.2 // indirect
