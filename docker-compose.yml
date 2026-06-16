@@ -18,6 +18,7 @@ services:
       context: .
       dockerfile: Dockerfile.pr
     container_name: 5g-agw-packetrusher
+    command: ./packetrusher ${PACKETRUSHER_CMD:-gnb}
     depends_on:
       - cgw
     volumes:

@@ -86,7 +86,39 @@ Also make sure the AMF supports the same test values used by PacketRusher:
 
 If these values do not match, the first visible failure will often be `NGSetupFailure` or a later UE registration rejection. For the first transparent NGSetup test, matching `config/amfcfg.yaml` is the critical piece.
 
-## 4. Run CGW in Transparent Proxy Mode
+## 4. Seed the PacketRusher Subscriber
+
+UE registration requires subscriber data in free5GC's MongoDB. The easiest reproducible path is to run the free5GC WebUI API and seed the PacketRusher UE.
+
+If your host already uses port `5000`, run WebUI on another port. For example:
+
+```bash
+docker run -d --name webui5050 \
+  --network sbi_network \
+  -p 5050:5000 \
+  -v /absolute/path/to/free5gc-compose/config/webuicfg.yaml:/free5gc/config/webuicfg.yaml \
+  free5gc/webui:v4.2.2 \
+  ./webui -c ./config/webuicfg.yaml
+```
+
+Then seed the default PacketRusher subscriber from this repository:
+
+```bash
+make seed-packetrusher-subscriber WEBUI_URL=http://127.0.0.1:5050
+```
+
+The default seeded values are:
+
+| Field | Value |
+| --- | --- |
+| SUPI | `imsi-999020000000001` |
+| PLMN | `99902` |
+| Key | `465B5CE8B199B49FAA5F0A2EE238A6BC` |
+| OPc | `E8ED289DEBA952E4283B54E88E6183CA` |
+| S-NSSAI | `sst=1`, `sd=000001` |
+| DNN | `internet` |
+
+## 5. Run CGW in Transparent Proxy Mode
 
 After free5GC AMF is reachable at `10.100.200.30:38412`, run this repository's stack with `CGW_AMF_ADDR` set:
 
@@ -105,7 +137,33 @@ Expected CGW logs for the first milestone:
 
 `ProcedureCode=21` is `NGSetup`.
 
-## 5. Debugging Checklist
+## 6. UE Registration Observation
+
+With AMF, AUSF, UDM, UDR, NSSF, and PCF running, use PacketRusher UE mode:
+
+```bash
+make demo-ue
+```
+
+Expected CGW log excerpts after subscriber seeding:
+
+```text
+[CGW] gNB -> AMF: pdu=InitiatingMessage procedure=InitialUEMessage procedureCode=15 size=70 bytes ranUeNgapId=1
+[CGW] AMF -> gNB: pdu=InitiatingMessage procedure=DownlinkNASTransport procedureCode=4 size=66 bytes amfUeNgapId=... ranUeNgapId=1
+[CGW] gNB -> AMF: pdu=InitiatingMessage procedure=UplinkNASTransport procedureCode=46 size=... bytes amfUeNgapId=... ranUeNgapId=1
+[CGW] AMF -> gNB: pdu=InitiatingMessage procedure=InitialContextSetup procedureCode=14 size=... bytes amfUeNgapId=... ranUeNgapId=1
+[CGW] gNB -> AMF: pdu=SuccessfulOutcome procedure=InitialContextSetup procedureCode=14 size=... bytes amfUeNgapId=... ranUeNgapId=1
+```
+
+PacketRusher should reach:
+
+```text
+[UE][NAS] Receive Registration Accept
+```
+
+If it reaches PDU session establishment and then fails with `DNN not supported or not subscribed in the slice`, debug SMF/UPF and subscriber DNN/S-NSSAI data next. This is beyond the first UE registration observation milestone.
+
+## 7. Debugging Checklist
 
 If CGW cannot connect to the AMF:
 
@@ -122,4 +180,9 @@ If SCTP connects but NG setup fails:
 - Check AMF logs for `NGSetupFailure` cause values.
 - Check CGW logs for the NGAP direction and procedure code.
 
-If NG setup succeeds but UE registration fails, that is expected for the next phase. UE registration needs the rest of the 5GC services and will introduce NAS/security/session behavior beyond the first transparent NGSetup milestone.
+If NG setup succeeds but UE registration fails:
+
+- Confirm the PacketRusher subscriber exists in free5GC WebUI.
+- Check UDR logs for `authentication-subscription` 404 responses.
+- Confirm AUSF, UDM, UDR, NSSF, and PCF are registered in NRF.
+- Remove invalid `*-callback` services from free5GC v4.2.2 configs if a NF refuses to start.

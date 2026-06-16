@@ -14,15 +14,17 @@ The current focus is a C-Plane Gateway (CGW) that sits between simulated gNBs an
 
 ## Current Status
 
-The project currently implements the first standalone CGW milestone:
+The project currently implements the first proxy milestone:
 
 - Starts an SCTP server on `0.0.0.0:38412`.
 - Accepts an SCTP association from PacketRusher acting as a gNB.
-- Decodes the incoming NGAP `NGSetupRequest`.
-- Builds and sends an `NGSetupResponse` directly from the CGW.
-- Brings PacketRusher's gNB-side AMF state to `Active`.
+- Decodes and logs NGAP direction, PDU type, procedure name, procedure code, payload size, and UE IDs where present.
+- Runs in mock AMF mode and builds/sends `NGSetupResponse` directly from the CGW.
+- Runs in transparent proxy mode and relays NGAP between PacketRusher and a real free5GC AMF.
+- Confirms transparent `NGSetupRequest -> NGSetupResponse` through free5GC AMF.
+- Confirms UE registration traffic through `InitialUEMessage`, authentication, security mode, `InitialContextSetup`, and `Registration Accept`.
 
-This means the CGW can currently pretend to be a minimal AMF for NG setup validation.
+The next engineering milestone is the B2B/NAT layer for NGAP UE identifiers.
 
 ## Architecture
 
@@ -173,7 +175,9 @@ Common commands are wrapped by `make`:
 | `make config` | Render the Docker Compose configuration |
 | `make demo-mock` | Run CGW + PacketRusher with CGW mock AMF responses |
 | `make demo-proxy` | Run CGW + PacketRusher with `CGW_AMF_ADDR=10.100.200.30:38412` |
+| `make demo-ue` | Run CGW + PacketRusher `ue --disableTunnel` for UE message observation |
 | `make demo-proxy AMF=IP:PORT` | Run transparent proxy mode against a custom AMF |
+| `make seed-packetrusher-subscriber` | Seed the PacketRusher UE subscriber through free5GC WebUI API |
 | `make logs` | Follow CGW and PacketRusher logs |
 | `make ps` | Show Compose service status |
 | `make down` | Stop and remove the Compose stack |

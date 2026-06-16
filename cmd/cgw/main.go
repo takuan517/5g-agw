@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
 
 	"5g-agw/internal/context"
@@ -216,25 +218,96 @@ func logNGAP(direction string, payload []byte) {
 
 	switch pdu.Present {
 	case ngapType.NGAPPDUPresentInitiatingMessage:
-		logNGAPMessage(direction, "InitiatingMessage", pdu.InitiatingMessage.ProcedureCode.Value, len(payload))
+		logNGAPMessage(direction, "InitiatingMessage", pdu.InitiatingMessage.ProcedureCode.Value, len(payload), pdu)
 	case ngapType.NGAPPDUPresentSuccessfulOutcome:
-		logNGAPMessage(direction, "SuccessfulOutcome", pdu.SuccessfulOutcome.ProcedureCode.Value, len(payload))
+		logNGAPMessage(direction, "SuccessfulOutcome", pdu.SuccessfulOutcome.ProcedureCode.Value, len(payload), pdu)
 	case ngapType.NGAPPDUPresentUnsuccessfulOutcome:
-		logNGAPMessage(direction, "UnsuccessfulOutcome", pdu.UnsuccessfulOutcome.ProcedureCode.Value, len(payload))
+		logNGAPMessage(direction, "UnsuccessfulOutcome", pdu.UnsuccessfulOutcome.ProcedureCode.Value, len(payload), pdu)
 	default:
 		log.Printf("[CGW] %s: Unknown NGAP PDU Present=%d (%d bytes)", direction, pdu.Present, len(payload))
 	}
 }
 
-func logNGAPMessage(direction, pduType string, procedureCode int64, payloadBytes int) {
+func logNGAPMessage(direction, pduType string, procedureCode int64, payloadBytes int, pdu *ngapType.NGAPPDU) {
 	log.Printf(
-		"[CGW] %s: pdu=%s procedure=%s procedureCode=%d size=%d bytes",
+		"[CGW] %s: pdu=%s procedure=%s procedureCode=%d size=%d bytes%s",
 		direction,
 		pduType,
 		procedureName(procedureCode),
 		procedureCode,
 		payloadBytes,
+		ueIDLogSuffix(pdu),
 	)
+}
+
+func ueIDLogSuffix(pdu *ngapType.NGAPPDU) string {
+	ids := collectUEIDs(reflect.ValueOf(pdu), make(map[uintptr]bool))
+	if len(ids) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(ids))
+	for key := range ids {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", key, ids[key]))
+	}
+	return " " + strings.Join(parts, " ")
+}
+
+func collectUEIDs(value reflect.Value, seen map[uintptr]bool) map[string]int64 {
+	ids := make(map[string]int64)
+	collectUEIDsInto(value, seen, ids)
+	return ids
+}
+
+func collectUEIDsInto(value reflect.Value, seen map[uintptr]bool, ids map[string]int64) {
+	if !value.IsValid() {
+		return
+	}
+
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return
+		}
+		ptr := value.Pointer()
+		if seen[ptr] {
+			return
+		}
+		seen[ptr] = true
+		collectUEIDsInto(value.Elem(), seen, ids)
+		return
+	}
+
+	switch value.Kind() {
+	case reflect.Struct:
+		if value.Type().PkgPath() == "github.com/free5gc/ngap/ngapType" {
+			switch value.Type().Name() {
+			case "AMFUENGAPID":
+				if field := value.FieldByName("Value"); field.IsValid() && field.CanInt() {
+					ids["amfUeNgapId"] = field.Int()
+				}
+				return
+			case "RANUENGAPID":
+				if field := value.FieldByName("Value"); field.IsValid() && field.CanInt() {
+					ids["ranUeNgapId"] = field.Int()
+				}
+				return
+			}
+		}
+
+		for i := 0; i < value.NumField(); i++ {
+			collectUEIDsInto(value.Field(i), seen, ids)
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < value.Len(); i++ {
+			collectUEIDsInto(value.Index(i), seen, ids)
+		}
+	}
 }
 
 func procedureName(procedureCode int64) string {
