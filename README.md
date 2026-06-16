@@ -58,10 +58,13 @@ The next major architecture step is to add a northbound SCTP client from CGW to 
 .
 ├── cmd/cgw/main.go             # CGW entrypoint and NGSetup handling
 ├── config/packetrusher.yaml    # PacketRusher gNB/UE test configuration
+├── docs/free5gc-integration.md # External free5GC integration guide
+├── examples/                   # Compose override examples
 ├── internal/context/nat.go     # Early NAT/UE context model
 ├── Dockerfile                  # CGW container image
 ├── Dockerfile.pr               # PacketRusher container image
 ├── docker-compose.yml          # Local test topology
+├── Makefile                    # Common development commands
 ├── go.mod
 └── go.sum
 ```
@@ -82,7 +85,7 @@ PacketRusher is configured to connect to the CGW as its AMF endpoint.
 Build and run both containers:
 
 ```bash
-docker compose up --build --force-recreate
+make demo-mock
 ```
 
 Expected CGW log excerpts:
@@ -91,6 +94,7 @@ Expected CGW log excerpts:
 [CGW] Listening for gNB on 0.0.0.0:38412...
 [CGW] gNBからの新規接続を受信: 10.100.200.20:9487
 [CGW] 62 バイトのSCTPデータを受信
+[CGW] gNB -> CGW: pdu=InitiatingMessage procedure=NGSetup procedureCode=21 size=62 bytes
 [CGW] -> 基地局からの初期登録リクエスト (NGSetupRequest) を検知しました！
 [CGW] NG Setup Response を送信しました！ SCTPリンク確立完了！
 ```
@@ -105,6 +109,74 @@ Expected PacketRusher log excerpts:
 ```
 
 Stop the demo with `Ctrl+C`.
+
+## Runtime Modes
+
+The CGW can run in two modes.
+
+### Mock AMF Mode
+
+This is the default mode. If `CGW_AMF_ADDR` is not set, the CGW responds to `NGSetupRequest` by itself.
+
+Use this mode for fast C-Plane smoke tests when no real 5GC is running.
+
+```bash
+make demo-mock
+```
+
+### Transparent Proxy Mode
+
+If `CGW_AMF_ADDR` is set, the CGW opens a northbound SCTP connection to that AMF and forwards NGAP messages between the gNB and the AMF.
+
+```bash
+make demo-proxy
+```
+
+To use a different AMF address:
+
+```bash
+make demo-proxy AMF=10.100.200.31:38412
+```
+
+In this mode, an AMF should be running and reachable from the CGW container. For development, it is best to run a full test 5GC stack, such as free5GC or Open5GS, on the same Docker network and configure its PLMN/TAC/S-NSSAI values to match PacketRusher.
+
+For the recommended external free5GC workflow, see [`docs/free5gc-integration.md`](docs/free5gc-integration.md).
+
+The current PacketRusher test values are:
+
+| Field | Value |
+| --- | --- |
+| MCC | `999` |
+| MNC | `02` |
+| TAC | `000001` |
+| SST | `01` |
+| SD | `000001` |
+
+For early transparent proxy validation, the first target is only `NGSetupRequest -> AMF -> NGSetupResponse`. Full UE registration will require additional 5GC components beyond AMF.
+
+Expected CGW proxy logs for a successful NG setup relay:
+
+```text
+[CGW] Running in transparent proxy mode. Upstream AMF: 10.100.200.30:38412
+[CGW] AMFへのSCTP接続を確立: 10.100.200.30:38412
+[CGW] gNB -> AMF: pdu=InitiatingMessage procedure=NGSetup procedureCode=21 size=62 bytes
+[CGW] AMF -> gNB: pdu=SuccessfulOutcome procedure=NGSetup procedureCode=21 size=... bytes
+```
+
+## Development Commands
+
+Common commands are wrapped by `make`:
+
+| Command | Description |
+| --- | --- |
+| `make build` | Build the CGW Docker image |
+| `make config` | Render the Docker Compose configuration |
+| `make demo-mock` | Run CGW + PacketRusher with CGW mock AMF responses |
+| `make demo-proxy` | Run CGW + PacketRusher with `CGW_AMF_ADDR=10.100.200.30:38412` |
+| `make demo-proxy AMF=IP:PORT` | Run transparent proxy mode against a custom AMF |
+| `make logs` | Follow CGW and PacketRusher logs |
+| `make ps` | Show Compose service status |
+| `make down` | Stop and remove the Compose stack |
 
 ## NGSetupResponse Handling
 

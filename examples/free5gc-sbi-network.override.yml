@@ -1,0 +1,19 @@
+# Example Docker Compose override for connecting an external free5GC stack
+# to the 5G-AGW development network.
+#
+# Usage from the free5GC Docker Compose directory:
+#   docker compose -f docker-compose.yml -f /path/to/5g-agw/examples/free5gc-sbi-network.override.yml up -d
+#
+# Adjust the service name "amf" below if your free5GC Compose file uses a
+# different AMF service name.
+
+services:
+  amf:
+    networks:
+      sbi_network:
+        ipv4_address: 10.100.200.30
+
+networks:
+  sbi_network:
+    external: true
+    name: sbi_network
