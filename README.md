@@ -1,131 +1,200 @@
 # 5G-AGW
 
-5G-AGW is an experimental 5G Access Gateway project written in Go.
+5G-AGW is an experimental 5G Access Gateway written in Go. It is designed to sit between one or more 5G RAN nodes and a 5G Core, providing back-to-back proxy functions for both the control plane and the user plane.
 
-The current focus is a C-Plane Gateway (CGW) that sits between simulated gNBs and a 5G Core AMF on the N2 interface. The long-term goal is to implement an NGAP back-to-back proxy that can aggregate multiple gNB/UE connections and present them upstream as a controlled, gateway-managed view, similar in spirit to NAT for NGAP identifiers.
+The final target is a gateway that can aggregate multiple gNBs and UEs behind a controlled gateway-managed view toward the 5G Core. Conceptually, it behaves like a NAT gateway for 5G identifiers:
 
-## Project Goals
+- C-Plane: NGAP/N2 identifier translation and message proxying
+- U-Plane: GTP-U/N3 TEID translation and packet proxying
 
-- Accept SCTP/NGAP connections from one or more gNBs.
-- Decode NGAP messages received on the N2 interface.
-- Act as an AMF-facing endpoint for early C-Plane validation.
-- Later, proxy NGAP traffic transparently between gNBs and a real AMF.
-- Eventually implement ID mapping for multiple gNBs/UEs, including RAN UE NGAP ID and AMF UE NGAP ID translation.
-
-## Current Status
-
-The project currently implements the first proxy milestone:
-
-- Starts an SCTP server on `0.0.0.0:38412`.
-- Accepts an SCTP association from PacketRusher acting as a gNB.
-- Decodes and logs NGAP direction, PDU type, procedure name, procedure code, payload size, and UE IDs where present.
-- Runs in mock AMF mode and builds/sends `NGSetupResponse` directly from the CGW.
-- Runs in transparent proxy mode and relays NGAP between PacketRusher and a real free5GC AMF.
-- Confirms transparent `NGSetupRequest -> NGSetupResponse` through free5GC AMF.
-- Confirms UE registration traffic through `InitialUEMessage`, authentication, security mode, `InitialContextSetup`, and `Registration Accept`.
-- Maintains a read-only UE mapping table that observes `RAN UE NGAP ID <-> AMF UE NGAP ID` relationships per SCTP association.
-- Rewrites `RAN UE NGAP ID` for UE-associated NGAP messages using a gateway-managed ID. The first gateway-managed ID is allocated when `InitialUEMessage` is received, then restored back to the original gNB-side ID on the downstream path.
-- Cleans up UE mapping state on `UEContextReleaseComplete` and when the SCTP association closes.
-- Observes `PDU Session Resource Setup` transfer payloads and logs GTP-U tunnel endpoints (`PDU Session ID`, tunnel direction, transport address, and TEID) as input for the upcoming U-Plane gateway.
-- Maintains an in-memory PDU Session mapping table that links UE mapping state with observed UL/DL GTP-U tunnel endpoints.
-
-The next engineering milestone is to harden this rewrite layer for multiple gNBs/UEs and broaden coverage beyond the first validated UE registration flow.
-
-## Architecture
+## Target Architecture
 
 ```text
-+----------------+        SCTP / NGAP N2        +----------------+
-| PacketRusher   | ---------------------------> | 5G-AGW CGW     |
-| simulated gNB  |                              | mock AMF side  |
-| 10.100.200.20  | <--------------------------- | 10.100.200.10  |
-+----------------+        NGSetupResponse       +----------------+
+                         +-------------------+
+                         |      5G-AGW       |
+                         |                   |
++--------+   N2/SCTP     |  +-------------+  |   N2/SCTP     +-----+
+| gNB #1 | <-----------> |  |     CGW     |  | <-----------> | AMF |
++--------+   NGAP        |  | C-Plane GW  |  |   NGAP        +-----+
+                         |  +-------------+  |
++--------+   N3/GTP-U    |  +-------------+  |   N3/GTP-U    +-----+
+| gNB #N | <-----------> |  |     UGW     |  | <-----------> | UPF |
++--------+   UDP/2152    |  | U-Plane GW  |  |   UDP/2152    +-----+
+                         |  +-------------+  |
+                         +-------------------+
 ```
 
-The next major architecture step is to add a northbound SCTP client from CGW to a real AMF:
+The gateway is intended to support two tightly coupled planes:
 
-```text
-+-----+        +----------+        +----------+
-| gNB | <----> |   CGW    | <----> |   AMF    |
-+-----+        +----------+        +----------+
-              NGAP B2B proxy
-```
-
-## Tech Stack
-
-- Go `1.26.2`
-- Docker / Docker Compose
-- PacketRusher for gNB/UE emulation
-- `github.com/free5gc/sctp` for SCTP
-- `github.com/free5gc/ngap` for NGAP encoding/decoding
-- `github.com/free5gc/aper` for ASN.1 APER support
-
-## Repository Layout
-
-```text
-.
-├── cmd/cgw/                    # CGW entrypoint, proxy, NGAP logging, and mapping
-├── config/packetrusher.yaml    # PacketRusher gNB/UE test configuration
-├── docs/free5gc-integration.md # External free5GC integration guide
-├── examples/                   # Compose override examples
-├── internal/context/nat.go     # Early NAT/UE context model
-├── Dockerfile                  # CGW container image
-├── Dockerfile.pr               # PacketRusher container image
-├── docker-compose.yml          # Local test topology
-├── Makefile                    # Common development commands
-├── go.mod
-└── go.sum
-```
-
-## Local Test Topology
-
-Docker Compose creates a bridge network named `sbi_network`:
-
-| Component | IP | Port | Role |
+| Plane | Interface | Protocol | Gateway role |
 | --- | --- | --- | --- |
-| CGW | `10.100.200.10` | `38412/SCTP` | N2 endpoint / mock AMF |
-| PacketRusher | `10.100.200.20` | `9487/SCTP` | simulated gNB |
+| C-Plane | N2 | SCTP + NGAP | Back-to-back NGAP proxy with UE/gNB ID translation |
+| U-Plane | N3 | UDP + GTP-U | Back-to-back GTP-U proxy with TEID translation |
 
-PacketRusher is configured to connect to the CGW as its AMF endpoint.
+## Goals
 
-## Running the Demo
+The completed 5G-AGW should provide the following capabilities:
 
-Build and run both containers:
+- Accept SCTP/NGAP connections from multiple gNBs.
+- Maintain a northbound SCTP/NGAP connection to one or more AMFs.
+- Proxy NGAP messages bidirectionally between gNBs and AMFs.
+- Rewrite NGAP UE identifiers so multiple downstream gNB/UE contexts can be represented safely upstream.
+- Maintain mapping tables for gNB association, UE context, AMF UE context, PDU Session, and GTP-U tunnel state.
+- Observe C-Plane PDU Session setup procedures and derive the U-Plane tunnel information needed for GTP-U forwarding.
+- Accept GTP-U packets from gNBs and UPFs.
+- Rewrite GTP-U TEIDs using gateway-managed TEIDs.
+- Forward user-plane packets between the RAN side and the core side according to C-Plane-derived session state.
+- Clean up C-Plane and U-Plane state on UE release, PDU Session release, and transport connection failure.
 
-```bash
-make demo-mock
-```
+## C-Plane Gateway Specification
 
-Expected CGW log excerpts:
+The C-Plane Gateway, or CGW, handles N2 traffic between gNBs and AMFs.
+
+### Southbound behavior
+
+On the gNB-facing side, the CGW:
+
+- Listens for SCTP associations on the NGAP port, normally `38412`.
+- Accepts NGAP messages from simulated or real gNBs.
+- Decodes NGAP messages for logging, identifier extraction, and mapping updates.
+- Tracks each gNB SCTP association separately.
+
+### Northbound behavior
+
+On the AMF-facing side, the CGW:
+
+- Opens an SCTP client connection to an upstream AMF.
+- Relays NGAP messages between the gNB side and the AMF side.
+- Presents gateway-managed UE identifiers toward the AMF.
+
+The current development topology uses free5GC AMF at:
 
 ```text
-[CGW] Listening for gNB on 0.0.0.0:38412...
-[CGW] gNBからの新規接続を受信: 10.100.200.20:9487
-[CGW] 62 バイトのSCTPデータを受信
-[CGW] gNB -> CGW: pdu=InitiatingMessage procedure=NGSetup procedureCode=21 size=62 bytes
-[CGW] -> 基地局からの初期登録リクエスト (NGSetupRequest) を検知しました！
-[CGW] NG Setup Response を送信しました！ SCTPリンク確立完了！
+10.100.200.30:38412
 ```
 
-Expected PacketRusher log excerpts:
+### NGAP identifier translation
+
+The CGW owns a gateway-managed `RAN UE NGAP ID` namespace.
+
+For the first UE message from a gNB:
 
 ```text
-[GNB][NGAP] Receive NG Setup Response
-[GNB][AMF] AMF Name: 5G-AGW
-[GNB][AMF] State of AMF: Active
-[GNB] NG Setup successful with N2 IP: 10.100.200.20:9487
+gNB original RAN UE NGAP ID -> gateway-managed RAN UE NGAP ID
 ```
 
-Stop the demo with `Ctrl+C`.
+For downstream AMF responses:
+
+```text
+gateway-managed RAN UE NGAP ID -> gNB original RAN UE NGAP ID
+```
+
+The core C-Plane mapping is:
+
+```text
+association ID
++ original RAN UE NGAP ID
++ gateway RAN UE NGAP ID
++ AMF UE NGAP ID
+```
+
+This allows the gateway to preserve the gNB-facing UE identity while exposing a gateway-controlled identity upstream.
+
+### PDU Session observation
+
+The CGW also observes PDU Session setup procedures because U-Plane state is negotiated through C-Plane NGAP messages.
+
+The intended PDU Session mapping contains:
+
+```text
+association ID
++ original RAN UE NGAP ID
++ gateway RAN UE NGAP ID
++ AMF UE NGAP ID
++ PDU Session ID
++ UL GTP-U endpoint address
++ UL TEID
++ DL GTP-U endpoint address
++ DL TEID
+```
+
+This table is the handoff point between the C-Plane and the future U-Plane gateway.
+
+### State cleanup
+
+C-Plane state should be removed when:
+
+- `UEContextReleaseComplete` is observed.
+- A gNB SCTP association closes.
+- A future PDU Session release procedure removes a PDU Session.
+- A future AMF-side association fails and contexts must be invalidated or rebuilt.
+
+## U-Plane Gateway Specification
+
+The U-Plane Gateway, or UGW, will handle N3 GTP-U traffic between gNBs and UPFs.
+
+The UGW is not the primary implemented component yet, but the expected design is as follows.
+
+### Southbound behavior
+
+On the gNB-facing side, the UGW should:
+
+- Listen for GTP-U packets on UDP port `2152`.
+- Accept packets from one or more gNB N3 addresses.
+- Decode the GTP-U header and extract the incoming TEID.
+- Resolve the packet to a PDU Session mapping created by the CGW.
+
+### Northbound behavior
+
+On the UPF-facing side, the UGW should:
+
+- Forward GTP-U packets to the selected UPF N3 address.
+- Rewrite the TEID to the gateway-managed or UPF-facing TEID expected for that session.
+- Maintain reverse mappings for downlink packets from UPF to gNB.
+
+### TEID translation
+
+The intended U-Plane mapping is similar in spirit to NAT:
+
+```text
+RAN-side TEID/address <-> gateway-managed TEID <-> UPF-side TEID/address
+```
+
+For uplink packets:
+
+```text
+gNB TEID -> gateway/UPF-facing TEID
+```
+
+For downlink packets:
+
+```text
+UPF TEID -> gateway/gNB-facing TEID
+```
+
+The UGW should not guess TEID relationships by observing packets alone. It should use the authoritative PDU Session state derived from C-Plane NGAP procedures.
+
+### U-Plane lifecycle
+
+U-Plane state should be created, updated, and removed based on C-Plane events:
+
+| C-Plane event | U-Plane effect |
+| --- | --- |
+| PDU Session Resource Setup | Create or update TEID mapping |
+| PDU Session Resource Modify | Update TEID mapping |
+| PDU Session Resource Release | Remove TEID mapping |
+| UE Context Release | Remove all UE-related TEID mappings |
+| SCTP association close | Remove all affected mappings |
 
 ## Runtime Modes
 
-The CGW can run in two modes.
+The gateway supports development modes that make incremental protocol validation easier.
 
 ### Mock AMF Mode
 
-This is the default mode. If `CGW_AMF_ADDR` is not set, the CGW responds to `NGSetupRequest` by itself.
+If `CGW_AMF_ADDR` is not set, the CGW responds to `NGSetupRequest` directly.
 
-Use this mode for fast C-Plane smoke tests when no real 5GC is running.
+This mode is intended for fast SCTP/NGAP smoke tests without a running 5GC.
 
 ```bash
 make demo-mock
@@ -133,103 +202,166 @@ make demo-mock
 
 ### Transparent Proxy Mode
 
-If `CGW_AMF_ADDR` is set, the CGW opens a northbound SCTP connection to that AMF and forwards NGAP messages between the gNB and the AMF.
+If `CGW_AMF_ADDR` is set, the CGW connects to that AMF and forwards NGAP bidirectionally.
 
 ```bash
 make demo-proxy
 ```
 
-To use a different AMF address:
-
-```bash
-make demo-proxy AMF=10.100.200.31:38412
-```
-
-In this mode, an AMF should be running and reachable from the CGW container. For development, it is best to run a full test 5GC stack, such as free5GC or Open5GS, on the same Docker network and configure its PLMN/TAC/S-NSSAI values to match PacketRusher.
-
-For the recommended external free5GC workflow, see [`docs/free5gc-integration.md`](docs/free5gc-integration.md).
-
-To verify the observed PDU Session / TEID mapping logs before implementing the U-Plane gateway, see [`docs/pdu-session-map-verification.md`](docs/pdu-session-map-verification.md).
-
-The current PacketRusher test values are:
-
-| Field | Value |
-| --- | --- |
-| MCC | `999` |
-| MNC | `02` |
-| TAC | `000001` |
-| SST | `01` |
-| SD | `000001` |
-
-For early transparent proxy validation, the first target is only `NGSetupRequest -> AMF -> NGSetupResponse`. Full UE registration will require additional 5GC components beyond AMF.
-
-Expected CGW proxy logs for a successful NG setup relay:
+The default AMF address used by the Makefile is:
 
 ```text
-[CGW] Running in transparent proxy mode. Upstream AMF: 10.100.200.30:38412
-[CGW] AMFへのSCTP接続を確立: 10.100.200.30:38412
-[CGW] gNB -> AMF: pdu=InitiatingMessage procedure=NGSetup procedureCode=21 size=62 bytes
-[CGW] AMF -> gNB: pdu=SuccessfulOutcome procedure=NGSetup procedureCode=21 size=... bytes
+10.100.200.30:38412
+```
+
+### UE Observation Mode
+
+PacketRusher UE mode can be used to validate UE registration and observe PDU Session procedures.
+
+```bash
+make demo-ue
+```
+
+This runs PacketRusher with `ue --disableTunnel`, which avoids requiring a local `gtp5g` kernel module on the PacketRusher side.
+
+## Development Topology
+
+The local Docker topology uses a shared bridge network:
+
+```text
+sbi_network = 10.100.200.0/24
+```
+
+| Component | IP | Role |
+| --- | --- | --- |
+| CGW | `10.100.200.10` | 5G-AGW C-Plane Gateway |
+| PacketRusher | `10.100.200.20` | Simulated gNB/UE |
+| free5GC AMF | `10.100.200.30` | Upstream AMF |
+
+free5GC is treated as an external dependency during development. See:
+
+```text
+docs/free5gc-integration.md
+```
+
+For PDU Session / TEID mapping verification, see:
+
+```text
+docs/pdu-session-map-verification.md
+```
+
+## Current Implementation Status
+
+The current implementation focuses on the C-Plane path and has validated the first end-to-end UE registration milestone.
+
+Implemented and verified:
+
+- SCTP server for gNB-side NGAP.
+- SCTP client connection to free5GC AMF.
+- Bidirectional transparent NGAP proxying.
+- `NGSetupRequest` / `NGSetupResponse` relay.
+- UE Registration message relay through PacketRusher and free5GC.
+- Gateway-managed `RAN UE NGAP ID` allocation.
+- Upstream rewrite of gNB-side `RAN UE NGAP ID`.
+- Downstream restoration of the original gNB-side `RAN UE NGAP ID`.
+- `RAN UE NGAP ID <-> Gateway RAN UE NGAP ID <-> AMF UE NGAP ID` mapping.
+- Mapping cleanup on `UEContextReleaseComplete` and SCTP association close.
+- PDU Session setup transfer observation logic.
+- In-memory PDU Session mapping table for observed UL/DL GTP-U tunnel endpoints.
+
+Validated result:
+
+```text
+PacketRusher + CGW + free5GC AMF -> UE Registration Accept
+```
+
+Not yet complete:
+
+- Multiple gNB / multiple UE scale validation.
+- AMF-side SCTP association aggregation for multiple gNBs.
+- Full NGAP procedure coverage beyond the registration path.
+- Handover and advanced mobility procedure support.
+- PDU Session release / modify hardening.
+- UGW implementation for GTP-U packet forwarding and TEID rewrite.
+- End-to-end N3 user-plane traffic validation.
+
+## Repository Layout
+
+```text
+.
+├── cmd/cgw/                    # CGW entrypoint, NGAP proxy, rewrite, logging, and mapping
+├── config/packetrusher.yaml    # PacketRusher gNB/UE test configuration
+├── docs/                       # Integration and verification guides
+├── examples/                   # Compose override examples
+├── internal/context/           # Early shared context/NAT model
+├── Dockerfile                  # CGW container image
+├── Dockerfile.pr               # PacketRusher container image
+├── docker-compose.yml          # Local CGW + PacketRusher topology
+├── Makefile                    # Common development commands
+├── go.mod
+└── go.sum
 ```
 
 ## Development Commands
-
-Common commands are wrapped by `make`:
 
 | Command | Description |
 | --- | --- |
 | `make build` | Build the CGW Docker image |
 | `make config` | Render the Docker Compose configuration |
 | `make demo-mock` | Run CGW + PacketRusher with CGW mock AMF responses |
-| `make demo-proxy` | Run CGW + PacketRusher with `CGW_AMF_ADDR=10.100.200.30:38412` |
-| `make demo-ue` | Run CGW + PacketRusher `ue --disableTunnel` for UE message observation |
+| `make demo-proxy` | Run CGW + PacketRusher against free5GC AMF |
+| `make demo-ue` | Run PacketRusher UE mode through the CGW |
 | `make demo-proxy AMF=IP:PORT` | Run transparent proxy mode against a custom AMF |
 | `make seed-packetrusher-subscriber` | Seed the PacketRusher UE subscriber through free5GC WebUI API |
 | `make logs` | Follow CGW and PacketRusher logs |
 | `make ps` | Show Compose service status |
 | `make down` | Stop and remove the Compose stack |
 
-## NGSetupResponse Handling
+## Notes on macOS Development
 
-The CGW currently builds an `NGSetupResponse` using `free5gc/ngap` and `free5gc/aper`.
+The full CGW package depends on Linux SCTP behavior through `github.com/free5gc/sctp`. For reliable local validation on macOS, run the gateway inside Docker rather than with `go run` directly.
 
-The response includes:
-
-- `AMFName`: `5G-AGW`
-- `ServedGUAMIList`: PLMN `999-02`
-- `RelativeAMFCapacity`: `100`
-- `PLMNSupportList`: PLMN `999-02`, S-NSSAI `sst=01`, `sd=000001`
-
-A packet replay escape hatch is also available. If `CGW_NGSETUP_RESPONSE_HEX` is set, the CGW will decode that hex string and send it directly instead of building the NGAP PDU dynamically.
-
-Example known-good response hex:
-
-```text
-2015002f00000400010008028035472d41475700600008000099f92001004000564001640050000b0099f92000001008000001
-```
-
-## Notes on Local Development
-
-The SCTP dependency is intended to run inside the Linux container. Building the full CGW package directly on macOS may fail because the SCTP implementation depends on Linux SCTP behavior and syscall bindings.
-
-For reliable validation, prefer Docker-based builds:
+Recommended:
 
 ```bash
 docker compose build cgw
+make demo-ue
 ```
+
+Avoid relying on direct macOS execution for SCTP behavior:
+
+```bash
+go run ./cmd/cgw
+```
+
+For future U-Plane validation, a Linux environment with suitable GTP-U support may be required. macOS Docker Desktop is sufficient for the current C-Plane registration validation, but it may not support kernel-level `gtp5g` behavior required by a full UPF data-plane test.
+
+## Technology Stack
+
+- Go `1.26.2`
+- Docker / Docker Compose
+- SCTP for N2 transport
+- NGAP for C-Plane signaling
+- GTP-U for the planned U-Plane data path
+- PacketRusher for gNB/UE emulation
+- free5GC for 5GC integration testing
+- `github.com/free5gc/sctp`
+- `github.com/free5gc/ngap`
+- `github.com/free5gc/aper`
 
 ## Roadmap
 
-1. Add a northbound SCTP client from CGW to a real AMF.
-2. Forward `NGSetupRequest` to the AMF and relay `NGSetupResponse` back to the gNB.
-3. Generalize the forwarding path for bidirectional NGAP messages.
-4. Introduce per-gNB and per-UE context tracking.
-5. Observe RAN UE NGAP ID and AMF UE NGAP ID mapping.
-6. Rewrite NGAP UE identifiers using the mapping table.
-7. Harden the rewrite path for multiple UE-associated procedures.
-8. Support multiple gNB SCTP associations aggregated through the CGW.
-9. Add structured logs, metrics, and integration test scripts.
+1. Harden C-Plane rewrite behavior for more UE-associated NGAP procedures.
+2. Validate multiple UEs behind one gNB association.
+3. Validate multiple gNB associations.
+4. Design and implement AMF-side SCTP aggregation.
+5. Extend PDU Session mapping for modify and release procedures.
+6. Implement UGW UDP/GTP-U listener.
+7. Implement TEID rewrite and bidirectional GTP-U forwarding.
+8. Couple UGW state creation and cleanup to CGW C-Plane events.
+9. Validate end-to-end user-plane traffic with a Linux-based free5GC/UPF environment.
+10. Add structured metrics, integration tests, and failure recovery behavior.
 
-## Development Philosophy
+## Design Principle
 
-This repository is intentionally small and direct while the NGAP behavior is being explored. The current priority is validating protocol behavior end-to-end before introducing heavier abstractions.
+5G-AGW keeps C-Plane and U-Plane behavior explicit and observable. The gateway should not hide protocol state behind opaque forwarding. Instead, it should expose the mapping state that makes NGAP and GTP-U translation understandable, testable, and eventually safe to operate with multiple gNBs and UEs.
