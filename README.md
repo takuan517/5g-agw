@@ -23,8 +23,10 @@ The project currently implements the first proxy milestone:
 - Runs in transparent proxy mode and relays NGAP between PacketRusher and a real free5GC AMF.
 - Confirms transparent `NGSetupRequest -> NGSetupResponse` through free5GC AMF.
 - Confirms UE registration traffic through `InitialUEMessage`, authentication, security mode, `InitialContextSetup`, and `Registration Accept`.
+- Maintains a read-only UE mapping table that observes `RAN UE NGAP ID <-> AMF UE NGAP ID` relationships per SCTP association.
+- Rewrites `RAN UE NGAP ID` for UE-associated NGAP messages using a gateway-managed ID. The first gateway-managed ID is allocated when `InitialUEMessage` is received, then restored back to the original gNB-side ID on the downstream path.
 
-The next engineering milestone is the B2B/NAT layer for NGAP UE identifiers.
+The next engineering milestone is to harden this rewrite layer for multiple gNBs/UEs and broaden coverage beyond the first validated UE registration flow.
 
 ## Architecture
 
@@ -58,7 +60,7 @@ The next major architecture step is to add a northbound SCTP client from CGW to 
 
 ```text
 .
-├── cmd/cgw/main.go             # CGW entrypoint and NGSetup handling
+├── cmd/cgw/                    # CGW entrypoint, proxy, NGAP logging, and mapping
 ├── config/packetrusher.yaml    # PacketRusher gNB/UE test configuration
 ├── docs/free5gc-integration.md # External free5GC integration guide
 ├── examples/                   # Compose override examples
@@ -217,9 +219,11 @@ docker compose build cgw
 2. Forward `NGSetupRequest` to the AMF and relay `NGSetupResponse` back to the gNB.
 3. Generalize the forwarding path for bidirectional NGAP messages.
 4. Introduce per-gNB and per-UE context tracking.
-5. Implement RAN UE NGAP ID and AMF UE NGAP ID mapping.
-6. Support multiple gNB SCTP associations aggregated through the CGW.
-7. Add structured logs, metrics, and integration test scripts.
+5. Observe RAN UE NGAP ID and AMF UE NGAP ID mapping.
+6. Rewrite NGAP UE identifiers using the mapping table.
+7. Harden the rewrite path for multiple UE-associated procedures.
+8. Support multiple gNB SCTP associations aggregated through the CGW.
+9. Add structured logs, metrics, and integration test scripts.
 
 ## Development Philosophy
 

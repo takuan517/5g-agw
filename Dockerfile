@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # C-Plane Gatewayをビルド
-RUN go build -o cgw cmd/cgw/main.go
+RUN go build -o cgw ./cmd/cgw
 
 # 実行
 CMD ["./cgw"]
