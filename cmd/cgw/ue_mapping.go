@@ -151,3 +151,43 @@ func (m *UEMapping) String() string {
 	}
 	return base + " <-> amfUeNgapId=<pending>"
 }
+
+func (t *UEMappingTable) RemoveByUEIDs(associationID int64, ids UEIDs, reason string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	mapping := t.findLocked(associationID, ids)
+	if mapping == nil {
+		return false
+	}
+	t.removeLocked(mapping)
+	log.Printf("[CGW][MAP] assoc=%d removed %s reason=%s", associationID, mapping.String(), reason)
+	return true
+}
+
+func (t *UEMappingTable) RemoveAssociation(associationID int64, reason string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	removed := 0
+	for key, mapping := range t.byOriginalRAN {
+		if key.AssociationID != associationID {
+			continue
+		}
+		t.removeLocked(mapping)
+		removed++
+	}
+
+	if removed > 0 {
+		log.Printf("[CGW][MAP] assoc=%d removed %d mapping(s) reason=%s", associationID, removed, reason)
+	}
+	return removed
+}
+
+func (t *UEMappingTable) removeLocked(mapping *UEMapping) {
+	delete(t.byOriginalRAN, UEAssociationKey{AssociationID: mapping.AssociationID, ID: mapping.OriginalRANUENGAPID})
+	delete(t.byGatewayRAN, UEAssociationKey{AssociationID: mapping.AssociationID, ID: mapping.GatewayRANUENGAPID})
+	if mapping.HasAMF {
+		delete(t.byAMF, UEAssociationKey{AssociationID: mapping.AssociationID, ID: mapping.AMFUENGAPID})
+	}
+}

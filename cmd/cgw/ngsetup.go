@@ -10,8 +10,8 @@ import (
 	"github.com/free5gc/ngap/ngapType"
 )
 
-// buildNGSetupResponse はAMFとして振る舞うための応答メッセージを構築します。
-// CGW_NGSETUP_RESPONSE_HEX が設定されている場合は、そのバイナリをリプレイします。
+// buildNGSetupResponse はAMFとして振る舞うための応答メッセージを構築
+// CGW_NGSETUP_RESPONSE_HEX が設定されている場合は、そのバイナリをリプレイする
 func buildNGSetupResponse() ([]byte, error) {
 	if replayHex := strings.TrimSpace(os.Getenv("CGW_NGSETUP_RESPONSE_HEX")); replayHex != "" {
 		replayHex = strings.NewReplacer(" ", "", "\n", "", "\t", "", ":", "").Replace(replayHex)

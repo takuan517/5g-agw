@@ -25,6 +25,7 @@ The project currently implements the first proxy milestone:
 - Confirms UE registration traffic through `InitialUEMessage`, authentication, security mode, `InitialContextSetup`, and `Registration Accept`.
 - Maintains a read-only UE mapping table that observes `RAN UE NGAP ID <-> AMF UE NGAP ID` relationships per SCTP association.
 - Rewrites `RAN UE NGAP ID` for UE-associated NGAP messages using a gateway-managed ID. The first gateway-managed ID is allocated when `InitialUEMessage` is received, then restored back to the original gNB-side ID on the downstream path.
+- Cleans up UE mapping state on `UEContextReleaseComplete` and when the SCTP association closes.
 
 The next engineering milestone is to harden this rewrite layer for multiple gNBs/UEs and broaden coverage beyond the first validated UE registration flow.
 

@@ -74,7 +74,7 @@ func handleMockAMF(gnbConn net.Conn) {
 			continue
 		}
 
-		log.Printf("[CGW] -> 基地局からの初期登録リクエスト (NGSetupRequest) を検知しました！")
+		log.Printf("[CGW] -> 基地局からの初期登録リクエスト (NGSetupRequest) を検知しました")
 		log.Printf("[CGW] -> AMFのフリをして NG Setup Response を返信します...")
 
 		responseBytes, err := buildNGSetupResponse()
@@ -87,6 +87,6 @@ func handleMockAMF(gnbConn net.Conn) {
 			log.Printf("[CGW] NG Setup Response の送信に失敗: %v", err)
 			return
 		}
-		log.Printf("[CGW] NG Setup Response を送信しました！ SCTPリンク確立完了！")
+		log.Printf("[CGW] NG Setup Response を送信しました。 SCTPリンク確立完了！")
 	}
 }

@@ -28,7 +28,7 @@ func handleTransparentProxy(gnbConn net.Conn, amfAddr string) {
 	amfConn, err := sctp.DialSCTP("sctp", nil, remoteAddr)
 	if err != nil {
 		log.Printf("[CGW] AMFへのSCTP接続に失敗: %v", err)
-		log.Printf("[CGW] ヒント: AMFが %s で起動しているか、またはCGW_AMF_ADDRを未設定にしてmock AMF modeで起動してください。", amfAddr)
+		log.Printf("[CGW] AMFが %s で起動しているか、またはCGW_AMF_ADDRを未設定にしてmock AMF modeで起動してください。", amfAddr)
 		return
 	}
 	defer amfConn.Close()
@@ -47,6 +47,7 @@ func handleTransparentProxy(gnbConn net.Conn, amfAddr string) {
 	if err := <-errCh; err != nil {
 		log.Printf("[CGW] 透過プロキシを終了: %v", err)
 	}
+	session.ueMappings.RemoveAssociation(session.associationID, "association closed")
 }
 
 func proxyNGAP(session *proxySession, direction string, dst net.Conn, src net.Conn, errCh chan<- error) {
@@ -71,6 +72,10 @@ func proxyNGAP(session *proxySession, direction string, dst net.Conn, src net.Co
 		if err := writeFull(dst, rewrittenPayload); err != nil {
 			errCh <- fmt.Errorf("%s write error: %w", direction, err)
 			return
+		}
+
+		if shouldReleaseMapping(entry) {
+			session.ueMappings.RemoveByUEIDs(session.associationID, entry.UEIDs, entry.Procedure)
 		}
 	}
 }
