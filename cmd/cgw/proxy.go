@@ -16,6 +16,7 @@ var nextAssociationID atomic.Int64
 type proxySession struct {
 	associationID int64
 	ueMappings    *UEMappingTable
+	pduSessions   *PDUSessionMappingTable
 }
 
 func handleTransparentProxy(gnbConn net.Conn, amfAddr string) {
@@ -36,6 +37,7 @@ func handleTransparentProxy(gnbConn net.Conn, amfAddr string) {
 	session := &proxySession{
 		associationID: nextAssociationID.Add(1),
 		ueMappings:    globalUEMappingTable,
+		pduSessions:   globalPDUSessionMappingTable,
 	}
 
 	log.Printf("[CGW] AMFへのSCTP接続を確立: %s (assoc=%d)", amfConn.RemoteAddr().String(), session.associationID)
@@ -47,6 +49,7 @@ func handleTransparentProxy(gnbConn net.Conn, amfAddr string) {
 	if err := <-errCh; err != nil {
 		log.Printf("[CGW] 透過プロキシを終了: %v", err)
 	}
+	session.pduSessions.RemoveAssociation(session.associationID, "association closed")
 	session.ueMappings.RemoveAssociation(session.associationID, "association closed")
 }
 
@@ -68,6 +71,7 @@ func proxyNGAP(session *proxySession, direction string, dst net.Conn, src net.Co
 
 		entry := logNGAP(direction, rewrittenPayload)
 		session.ueMappings.Observe(session.associationID, direction, entry)
+		session.pduSessions.Observe(session.associationID, direction, session.ueMappings, entry)
 
 		if err := writeFull(dst, rewrittenPayload); err != nil {
 			errCh <- fmt.Errorf("%s write error: %w", direction, err)
@@ -75,6 +79,7 @@ func proxyNGAP(session *proxySession, direction string, dst net.Conn, src net.Co
 		}
 
 		if shouldReleaseMapping(entry) {
+			session.pduSessions.RemoveByUEIDs(session.associationID, entry.UEIDs, entry.Procedure)
 			session.ueMappings.RemoveByUEIDs(session.associationID, entry.UEIDs, entry.Procedure)
 		}
 	}

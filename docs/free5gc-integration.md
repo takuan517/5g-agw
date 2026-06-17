@@ -186,3 +186,13 @@ If NG setup succeeds but UE registration fails:
 - Check UDR logs for `authentication-subscription` 404 responses.
 - Confirm AUSF, UDM, UDR, NSSF, and PCF are registered in NRF.
 - Remove invalid `*-callback` services from free5GC v4.2.2 configs if a NF refuses to start.
+
+## 8. PDU Session / TEID Mapping Verification
+
+After UE registration works, the next C-Plane validation step is to confirm that the CGW observes `PDU Session Resource Setup` and records the GTP-U tunnel endpoint information needed by the future U-Plane gateway.
+
+See:
+
+```text
+docs/pdu-session-map-verification.md
+```

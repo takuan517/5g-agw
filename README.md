@@ -27,6 +27,7 @@ The project currently implements the first proxy milestone:
 - Rewrites `RAN UE NGAP ID` for UE-associated NGAP messages using a gateway-managed ID. The first gateway-managed ID is allocated when `InitialUEMessage` is received, then restored back to the original gNB-side ID on the downstream path.
 - Cleans up UE mapping state on `UEContextReleaseComplete` and when the SCTP association closes.
 - Observes `PDU Session Resource Setup` transfer payloads and logs GTP-U tunnel endpoints (`PDU Session ID`, tunnel direction, transport address, and TEID) as input for the upcoming U-Plane gateway.
+- Maintains an in-memory PDU Session mapping table that links UE mapping state with observed UL/DL GTP-U tunnel endpoints.
 
 The next engineering milestone is to harden this rewrite layer for multiple gNBs/UEs and broaden coverage beyond the first validated UE registration flow.
 
@@ -147,6 +148,8 @@ make demo-proxy AMF=10.100.200.31:38412
 In this mode, an AMF should be running and reachable from the CGW container. For development, it is best to run a full test 5GC stack, such as free5GC or Open5GS, on the same Docker network and configure its PLMN/TAC/S-NSSAI values to match PacketRusher.
 
 For the recommended external free5GC workflow, see [`docs/free5gc-integration.md`](docs/free5gc-integration.md).
+
+To verify the observed PDU Session / TEID mapping logs before implementing the U-Plane gateway, see [`docs/pdu-session-map-verification.md`](docs/pdu-session-map-verification.md).
 
 The current PacketRusher test values are:
 

@@ -90,6 +90,17 @@ func (t *UEMappingTable) OriginalRANID(associationID int64, gatewayRANID int64) 
 	return mapping.OriginalRANUENGAPID, true
 }
 
+func (t *UEMappingTable) FindByUEIDs(associationID int64, ids UEIDs) (UEMapping, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	mapping := t.findLocked(associationID, ids)
+	if mapping == nil {
+		return UEMapping{}, false
+	}
+	return *mapping, true
+}
+
 func (t *UEMappingTable) Observe(associationID int64, direction string, entry *NGAPLogEntry) {
 	if entry == nil || (!entry.UEIDs.HasRAN && !entry.UEIDs.HasAMF) {
 		return
