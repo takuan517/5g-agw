@@ -24,6 +24,7 @@ type NGAPLogEntry struct {
 	ProcedureCode int64
 	PayloadBytes  int
 	UEIDs         UEIDs
+	PDUSessions   []PDUSessionObservation
 }
 
 func logNGAP(direction string, payload []byte) *NGAPLogEntry {
@@ -53,6 +54,7 @@ func logNGAPMessage(direction, pduType string, procedureCode int64, payloadBytes
 		ProcedureCode: procedureCode,
 		PayloadBytes:  payloadBytes,
 		UEIDs:         collectUEIDs(reflect.ValueOf(pdu), make(map[uintptr]bool)),
+		PDUSessions:   collectPDUSessionObservations(reflect.ValueOf(pdu), make(map[uintptr]bool)),
 	}
 
 	log.Printf(
@@ -64,6 +66,7 @@ func logNGAPMessage(direction, pduType string, procedureCode int64, payloadBytes
 		entry.PayloadBytes,
 		entry.UEIDs.LogSuffix(),
 	)
+	logPDUSessionObservations(direction, entry)
 	return entry
 }
 

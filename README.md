@@ -26,6 +26,7 @@ The project currently implements the first proxy milestone:
 - Maintains a read-only UE mapping table that observes `RAN UE NGAP ID <-> AMF UE NGAP ID` relationships per SCTP association.
 - Rewrites `RAN UE NGAP ID` for UE-associated NGAP messages using a gateway-managed ID. The first gateway-managed ID is allocated when `InitialUEMessage` is received, then restored back to the original gNB-side ID on the downstream path.
 - Cleans up UE mapping state on `UEContextReleaseComplete` and when the SCTP association closes.
+- Observes `PDU Session Resource Setup` transfer payloads and logs GTP-U tunnel endpoints (`PDU Session ID`, tunnel direction, transport address, and TEID) as input for the upcoming U-Plane gateway.
 
 The next engineering milestone is to harden this rewrite layer for multiple gNBs/UEs and broaden coverage beyond the first validated UE registration flow.
 
