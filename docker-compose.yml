@@ -27,6 +27,22 @@ services:
       sbi_network:
         ipv4_address: 10.100.200.20
 
+  ugw:
+    profiles:
+      - uplane
+    build:
+      context: .
+      dockerfile: Dockerfile.ugw
+    container_name: 5g-agw-ugw
+    restart: unless-stopped
+    environment:
+      UGW_RAN_LISTEN_ADDR: ${UGW_RAN_LISTEN_ADDR:-0.0.0.0:2152}
+      UGW_CORE_LISTEN_ADDR: ${UGW_CORE_LISTEN_ADDR:-0.0.0.0:2153}
+      UGW_STATIC_ROUTE: ${UGW_STATIC_ROUTE:-}
+    networks:
+      sbi_network:
+        ipv4_address: 10.100.200.11
+
 networks:
   sbi_network:
     name: sbi_network

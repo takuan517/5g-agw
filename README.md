@@ -268,6 +268,9 @@ Implemented and verified:
 - Mapping cleanup on `UEContextReleaseComplete` and SCTP association close.
 - PDU Session setup transfer observation logic.
 - In-memory PDU Session mapping table for observed UL/DL GTP-U tunnel endpoints.
+- Initial U-Plane GTP-U packet primitive for T-PDU TEID parsing and TEID rewrite.
+- Initial U-Plane routing primitive that rewrites TEIDs and selects the next endpoint for uplink and downlink packets.
+- Initial UGW process skeleton with UDP listeners for RAN-side and core-side GTP-U traffic.
 
 Validated result:
 
@@ -282,7 +285,7 @@ Not yet complete:
 - Full NGAP procedure coverage beyond the registration path.
 - Handover and advanced mobility procedure support.
 - PDU Session release / modify hardening.
-- UGW implementation for GTP-U packet forwarding and TEID rewrite.
+- C-Plane-driven dynamic route installation into the UGW.
 - End-to-end N3 user-plane traffic validation.
 
 ## Repository Layout
@@ -290,6 +293,7 @@ Not yet complete:
 ```text
 .
 ├── cmd/cgw/                    # CGW entrypoint, NGAP proxy, rewrite, logging, and mapping
+├── cmd/ugw/                    # UGW entrypoint and static-route startup configuration
 ├── config/packetrusher.yaml    # PacketRusher gNB/UE test configuration
 ├── docs/                       # Integration and verification guides
 ├── examples/                   # Compose override examples
@@ -307,6 +311,7 @@ Not yet complete:
 | Command | Description |
 | --- | --- |
 | `make build` | Build the CGW Docker image |
+| `make build-ugw` | Build the UGW Docker image |
 | `make config` | Render the Docker Compose configuration |
 | `make demo-mock` | Run CGW + PacketRusher with CGW mock AMF responses |
 | `make demo-proxy` | Run CGW + PacketRusher against free5GC AMF |
@@ -357,8 +362,8 @@ For future U-Plane validation, a Linux environment with suitable GTP-U support m
 4. Design and implement AMF-side SCTP aggregation.
 5. Extend PDU Session mapping for modify and release procedures.
 6. Implement UGW UDP/GTP-U listener.
-7. Implement TEID rewrite and bidirectional GTP-U forwarding.
-8. Couple UGW state creation and cleanup to CGW C-Plane events.
+7. Couple UGW state creation and cleanup to CGW C-Plane events.
+8. Validate TEID rewrite and bidirectional GTP-U forwarding with real N3 traffic.
 9. Validate end-to-end user-plane traffic with a Linux-based free5GC/UPF environment.
 10. Add structured metrics, integration tests, and failure recovery behavior.
 
